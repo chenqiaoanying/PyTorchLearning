@@ -2,6 +2,7 @@ import cv2
 import numpy as np
 import segmentation_models_pytorch as smp
 import torch
+import torch.nn.functional as F
 from torchvision.transforms import transforms
 
 device = (
@@ -24,7 +25,7 @@ model = smp.Unet(
     encoder_name="resnet152",  # choose encoder, e.g. mobilenet_v2 or efficientnet-b7
     encoder_weights="imagenet",  # use `imagenet` pre-trained weights for encoder initialization
     in_channels=3,  # model input channels (1 for gray-scale images, 3 for RGB, etc.)
-    # classes=3,  # model output channels (number of classes in your dataset)
+    classes=1,  # model output channels (number of classes in your dataset)
     # aux_params=aux_params
 )
 
@@ -48,22 +49,15 @@ print(f"Shape of tensor: {tensor.shape}")
 masks = model.predict(tensor)
 print(f"Shape of masks: {masks.shape}")
 
-# Convert the output tensor to a numpy array
-masks = transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])(masks)
-masks = masks.cpu().numpy()
+mask_pred = torch.sigmoid(masks).cpu()
+mask_pred = np.clip(np.nan_to_num(mask_pred), a_min=0, a_max=1)
+mask_pred /= mask_pred.max()
 
-# Perform an argmax operation to get the most probable class for each pixel
-mask = masks[0][0]
-
-# Normalize the segmented image to range 0-255
-# segmented_image = (mask / np.max(mask) * 255).astype(np.uint8)
-# cv2.imshow('Segmented Image', segmented_image)
-
-mask = (mask * 255).astype(np.uint8)
-mask_3ch = cv2.cvtColor(mask, cv2.COLOR_GRAY2BGR)
-cv2.imshow('Mask', mask_3ch)
-masked_image = cv2.bitwise_and(image, mask_3ch)
-cv2.imshow('Masked Image', masked_image)
+mask = (mask_pred * 255).astype(np.uint8)
+# mask_3ch = cv2.cvtColor(mask, cv2.COLOR_GRAY2BGR)
+# cv2.imshow('Mask', mask_3ch)
+# masked_image = cv2.bitwise_and(image, mask_3ch)
+cv2.imshow('Masked Image', mask[0][0])
 
 cv2.waitKey(0)
 cv2.destroyAllWindows()
