@@ -26,17 +26,18 @@ def find_split_count(gray: Mat):
     # cv2.imshow("diff", binary)
     # cv2.waitKey(0)
 
-    kernel = np.ones((5, 1), np.uint8)
+    kernel = np.ones((3, 1), np.uint8)
     dilation = cv2.dilate(binary, kernel, iterations=2)
     # cv2.imshow("dilation", dilation)
     # cv2.waitKey(0)
     lines = cv2.HoughLinesP(dilation, 1, np.pi / 180, 100, minLineLength=100, maxLineGap=3)
     lines = np.squeeze(lines, axis=1)
     # 在原图上绘制线条
+    # line_background = np.zeros_like(gray)
     # for line in lines:
     #     x1, y1, x2, y2 = line
-    #     cv2.line(image, (x1, y1), (x2, y2), (0, 255, 0), 2)
-    # cv2.imshow("image", image)
+    #     cv2.line(line_background, (x1, y1), (x2, y2), (0, 255, 0), 2)
+    # cv2.imshow("image", line_background)
     # cv2.waitKey(0)
 
     valid_lines = lines[np.abs(lines[:, 2] - lines[:, 0]) < 2]
@@ -84,9 +85,10 @@ def calculate_connection(connect_diff_matrix, max_link_count, max_link_size):
     return [to_list(node_dict[index]) for index, count in link_head_set.items() if count >= max_link_size]
 
 
-image = cv2.imread("13d0ee82e58d47da80f389f7a4030e20.jpg")
+image = cv2.imread("1a5c9ecb5c54461daf1d18722c69ab4a.jpg")
 gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
 piece_h_count, piece_w_count = find_split_count(gray.transpose()), find_split_count(gray)
+# piece_h_count, piece_w_count = 2, 5
 piece_h, piece_w = image.shape[0] // piece_h_count, image.shape[1] // piece_w_count
 image_pieces = [(image[y:y + piece_h, x:x + piece_w], gray[y:y + piece_h, x:x + piece_w])
                 for x in range(0, image.shape[1], piece_w)
