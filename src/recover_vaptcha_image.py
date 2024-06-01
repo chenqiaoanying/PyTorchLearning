@@ -1,9 +1,9 @@
-# scan the picture from left fo right and find the edge of the image
-from collections import Counter
+import copy
 
 import cv2
 import numpy as np
 from cv2 import Mat
+from sortedcontainers import SortedList
 
 
 def find_largest_class(src, tolerance):
@@ -47,42 +47,101 @@ def find_split_count(gray: Mat):
     return round(width / x_interval)
 
 
-def calculate_connection(connect_diff_matrix, max_link_count, max_link_size):
-    connect_indices = np.argsort(connect_diff_matrix.flatten())
-    prev_connect_indices, next_connect_indices = np.unravel_index(connect_indices, connect_diff_matrix.shape)
-    node_dict = {}
-    link_head_set = {}
+def calculate_connection(connect_cost_matrix, piece_lr_count, piece_tb_count):
+    connect_cost_matrix = np.square(connect_cost_matrix)
+    lr_connect_cost_matrix, tb_connect_cost_matrix = connect_cost_matrix[:, :, 0], connect_cost_matrix[:, :, 1]
+    sorted_lr_indices = np.argsort(lr_connect_cost_matrix)[:, :2]
+    sorted_tb_indices = np.argsort(tb_connect_cost_matrix)[:, :2]
+    calculated_count = 0
 
-    def find_head(node: dict):
-        while node["prev"]:
-            node = node["prev"]
-        return node
+    class Combination:
+        def __init__(self, lr_count_limit, tb_count_limit):
+            self.status = np.full((tb_count_limit, lr_count_limit), -1)
+            self.tb_count_limit = tb_count_limit
+            self.lr_count_limit = lr_count_limit
+            self.index = (-1, -1)
+            self.cost = 0
+            self.connect_count = 0
 
-    def get_or_create_node(value):
-        if value not in node_dict:
-            node_dict[value] = {"value": value, "prev": None, "next": None}
-            link_head_set[value] = 1
-        return node_dict[value]
+        @property
+        def avg_cost(self):
+            return self.cost / self.connect_count
 
-    def to_list(node: dict):
-        result = []
-        while node:
-            result.append(node["value"])
-            node = node["next"]
-        return result
+        @property
+        def next_index(self):
+            tb_index, lr_index = self.index
+            if lr_index == -1 and tb_index == -1:
+                return 0, 0
+            lr_index += 1
+            tb_index = tb_index
+            if lr_index >= self.lr_count_limit:
+                lr_index = 0
+                tb_index += 1
+                if tb_index >= self.tb_count_limit:
+                    return None
 
-    for i, j in zip(prev_connect_indices, next_connect_indices):
-        if len([count for count in link_head_set.values() if count >= max_link_size]) >= max_link_count:
-            break
-        node_i, node_j = get_or_create_node(i), get_or_create_node(j)
-        if not node_i["next"] and not node_j["prev"]:
-            head = find_head(node_i)
-            if link_head_set[head["value"]] < max_link_size and head != node_j:
-                node_i["next"] = node_j
-                node_j["prev"] = node_i
-                count_from_node_j = link_head_set.pop(j)
-                link_head_set[head["value"]] += count_from_node_j
-    return [to_list(node_dict[index]) for index, count in link_head_set.items() if count >= max_link_size]
+            return tb_index, lr_index
+
+        @property
+        def next_appended_values(self):
+            if not self.next_index:
+                return []
+            tb_index, lr_index = self.next_index
+            if lr_index == 0 and tb_index == 0:
+                return []
+
+            if lr_index == 0:
+                return [(self.status[tb_index - 1, 0], "bottom")]
+            if tb_index == 0:
+                return [(self.status[tb_index, lr_index - 1], "right")]
+            return [(self.status[tb_index, lr_index - 1], "right"), (self.status[tb_index - 1, lr_index], "bottom")]
+
+        def append(self, value):
+            if value in self.status:
+                return False
+            if not self.next_index:
+                return False
+            tb_index, lr_index = self.next_index
+            clone = copy.deepcopy(self)
+            for appended_value, direction in clone.next_appended_values:
+                clone.connect_count += 1
+                if direction == "bottom":
+                    clone.cost += tb_connect_cost_matrix[appended_value, value]
+                if direction == "right":
+                    clone.cost += lr_connect_cost_matrix[appended_value, value]
+            clone.status[tb_index, lr_index] = value
+            clone.index = self.next_index
+            return clone
+
+    piece_count = connect_cost_matrix.shape[0]
+    combination_list = SortedList[Combination](key=lambda x: x.avg_cost)
+    min_combination: Combination | None = None
+    for (left, sorted_right_indices) in enumerate(sorted_lr_indices):
+        for right in sorted_right_indices:
+            if left == right:
+                continue
+            combination = Combination(piece_lr_count, piece_tb_count).append(left).append(right)
+            calculated_count += 1
+            combination_list.add(combination)
+    while combination_list:
+        combination = combination_list.pop(0)
+        append_candidates = set(range(piece_count))
+        for appended_value, direction in combination.next_appended_values:
+            if direction == "bottom":
+                append_candidates.intersection_update([bottom for bottom in sorted_tb_indices[appended_value]])
+            if direction == "right":
+                append_candidates.intersection_update([right for right in sorted_lr_indices[appended_value]])
+        for append_value in append_candidates:
+            new_combination = combination.append(append_value)
+            if new_combination:
+                if not new_combination.next_index:
+                    if not min_combination or new_combination.cost < min_combination.cost:
+                        min_combination = new_combination
+                elif not min_combination or new_combination.cost < min_combination.cost:
+                    combination_list.add(new_combination)
+                    calculated_count += 1
+    print(f"calculated_count: {calculated_count}")
+    return min_combination.status
 
 
 def recover_image(src_image: Mat):
@@ -104,21 +163,17 @@ def recover_image(src_image: Mat):
             if i == j:
                 connect_diff_matrix[i, j] = np.iinfo(connect_diff_matrix.dtype).max
                 continue
-            rl_score = np.abs((gray_piece[:, -1] - gray_piece2[:, 0]).astype(np.int8)).sum()
-            bt_score = np.abs((gray_piece[-1, :] - gray_piece2[0, :]).astype(np.int8)).sum()
-            connect_diff_matrix[i, j] = rl_score, bt_score
-    rl_connect_diff_matrix, bt_connect_diff_matrix = connect_diff_matrix[:, :, 0], connect_diff_matrix[:, :, 1]
+            lr_cost = np.abs((gray_piece[:, -1] - gray_piece2[:, 0]).astype(np.int8)).sum()
+            tb_cost = np.abs((gray_piece[-1, :] - gray_piece2[0, :]).astype(np.int8)).sum()
+            connect_diff_matrix[i, j] = lr_cost, tb_cost
 
-    row_list = calculate_connection(rl_connect_diff_matrix, piece_h_count, piece_w_count)
-    col_list = calculate_connection(bt_connect_diff_matrix, piece_w_count, piece_h_count)
+    min_status = calculate_connection(connect_diff_matrix, piece_w_count, piece_h_count)
+    print(f"min_status: {min_status}")
 
-    first_col = next(col for col in col_list if row_list[0][0] in col)
-    row_list = sorted(row_list, key=lambda row: first_col.index(row[0]))
-
-    recovered_image = cv2.vconcat([cv2.hconcat([image_pieces[piece_index][0] for piece_index in row]) for row in row_list])
+    recovered_image = cv2.vconcat([cv2.hconcat([image_pieces[piece_index][0] for piece_index in row]) for row in min_status])
     cv2.imshow("recover_image", recovered_image)
     cv2.waitKey(0)
 
 
-image = cv2.imread("26e55c44d2824a7891223d7ec125c233.jpg")
+image = cv2.imread("1a5c9ecb5c54461daf1d18722c69ab4a.jpg")
 recover_image(image)

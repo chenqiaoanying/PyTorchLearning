@@ -15,6 +15,7 @@ torchaudio = {version = "*", index = "pytorch"}
 segmentation-models-pytorch = "*"
 six = "*"
 opencv-python = "*"
+sortedcontainers = "*"
 
 [dev-packages]
 
