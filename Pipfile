@@ -16,6 +16,8 @@ segmentation-models-pytorch = "*"
 six = "*"
 opencv-python = "*"
 sortedcontainers = "*"
+label-studio-sdk = "*"
+scipy = "*"
 
 [dev-packages]
 

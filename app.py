@@ -6,36 +6,7 @@ from torch.utils.data import DataLoader
 from torchvision import datasets
 from torchvision.transforms import ToTensor, Normalize, Compose
 
-# transform = Compose([ToTensor(), Normalize((0.5,), (0.5,))])
-
-
-# 从开源数据集下载训练数据。
-training_data = datasets.FashionMNIST(
-    root="data",
-    train=True,
-    download=True,
-    transform=ToTensor(),
-)
-
-# 从开源数据集下载测试数据。
-test_data = datasets.FashionMNIST(
-    root="data",
-    train=False,
-    download=True,
-    transform=ToTensor(),
-)
-
-batch_size = 64
-
-# 创建数据加载器
-train_dataloader = DataLoader(training_data, batch_size=batch_size)
-test_dataloader = DataLoader(test_data, batch_size=batch_size)
-
-for X, y in test_dataloader:
-    print(f"Shape of X [N, C, H, W]: {X.shape}")
-    print(f"Shape of y: {y.shape} {y.dtype}")
-    break
-
+# transform = Compose([ToTensor(), Normalize((0.5,), (0.5,)), ])
 # 获取 cpu, gpu 或 mps 设备用于加速训练.
 device = (
     "cuda"
@@ -136,50 +107,79 @@ class SimpleCNN2(nn.Module):
         return x
 
 
-# Instantiate the model and move it to the appropriate device
-model = SimpleCNN().to(device)
-print(model)
-
-criterion = nn.CrossEntropyLoss()
-optimizer = optim.Adam(model.parameters(), lr=0.001)
-
-
-def test_loop():
-    model.eval()  # set the model to evaluation mode
-    test_loss = 0
-    correct = 0
-
-    with torch.no_grad():  # no need to calculate gradients during evaluation
-        for data, target in test_dataloader:
-            data = data.to(device)
-            target = target.to(device)
-            output = model(data)
-            test_loss += criterion(output, target).item()  # sum up batch loss
-            pred = output.argmax(dim=1, keepdim=True)  # get the index of the max log-probability
-            correct += pred.eq(target.view_as(pred)).sum().item()
-
-    test_loss /= len(test_dataloader.dataset)
-    accuracy = 100. * correct / len(test_dataloader.dataset)
-
-    print(f'\nTest set: Average loss: {test_loss:.4f}, Accuracy: {correct}/{len(test_dataloader.dataset)} ({accuracy:.0f}%)\n')
-
-
-train_start_time = time.time()
-for epoch in range(100):  # loop over the dataset multiple times
+def train_loop(dataloader, model, loss_fn, optimizer):
     model.train()
-    for batch_idx, (data, target) in enumerate(train_dataloader):
+    for batch_idx, (data, target) in enumerate(dataloader):
         data = data.to(device)
         target = target.to(device)
 
         output = model(data)
-        loss = criterion(output, target)
+        loss = loss_fn(output, target)
         loss.backward()
         optimizer.step()
         optimizer.zero_grad()
 
         if batch_idx % 100 == 0:
-            print(f'Train Epoch: {epoch} [{(batch_idx + 1) * len(data):>5d}/{len(train_dataloader.dataset)} '
-                  f'({100. * (batch_idx + 1) / len(train_dataloader):2.0f}%)]\tLoss: {loss.item():.6f}')
-    test_loop()
-train_end_time = time.time()
-print(f'Time taken for training: {train_end_time - train_start_time}')
+            print(f'Train Epoch: {epoch} [{(batch_idx + 1) * len(data):>5d}/{len(dataloader.dataset)} '
+                  f'({100. * (batch_idx + 1) / len(dataloader):2.0f}%)]\tLoss: {loss.item():.6f}')
+
+
+def test_loop(data_loader, model, loss_fn):
+    model.eval()  # set the model to evaluation mode
+    test_loss = 0
+    correct = 0
+
+    with torch.no_grad():  # no need to calculate gradients during evaluation
+        for data, target in data_loader:
+            data = data.to(device)
+            target = target.to(device)
+            output = model(data)
+            test_loss += loss_fn(output, target).item()  # sum up batch loss
+            pred = output.argmax(dim=1, keepdim=True)  # get the index of the max log-probability
+            correct += pred.eq(target.view_as(pred)).sum().item()
+
+    test_loss /= len(data_loader.dataset)
+    accuracy = 100. * correct / len(data_loader.dataset)
+
+    print(f'\nTest set: Average loss: {test_loss:.4f}, Accuracy: {correct}/{len(data_loader.dataset)} ({accuracy:.0f}%)\n')
+
+
+if __name__ == '__main__':
+    # 从开源数据集下载训练数据。
+    training_data = datasets.FashionMNIST(
+        root="data",
+        train=True,
+        download=True,
+        transform=ToTensor(),
+    )
+
+    # 从开源数据集下载测试数据。
+    test_data = datasets.FashionMNIST(
+        root="data",
+        train=False,
+        download=True,
+        transform=ToTensor(),
+    )
+
+    batch_size = 64
+
+    # 创建数据加载器
+    train_dataloader = DataLoader(training_data, batch_size=batch_size)
+    test_dataloader = DataLoader(test_data, batch_size=batch_size)
+
+    for X, y in test_dataloader:
+        print(f"Shape of X [N, C, H, W]: {X.shape}")
+        print(f"Shape of y: {y.shape} {y.dtype}")
+        break
+
+    model = SimpleCNN().to(device)
+    print(model)
+
+    criterion = nn.CrossEntropyLoss()
+    optimizer = optim.Adam(model.parameters(), lr=0.001)
+    train_start_time = time.time()
+    for epoch in range(100):  # loop over the dataset multiple times
+        train_loop(train_dataloader, model, criterion, optimizer)
+        test_loop(test_dataloader, model, criterion)
+    train_end_time = time.time()
+    print(f'Time taken for training: {train_end_time - train_start_time}')

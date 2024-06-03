@@ -1,4 +1,5 @@
 import copy
+import os
 
 import cv2
 import numpy as np
@@ -50,8 +51,8 @@ def find_split_count(gray: Mat):
 def calculate_connection(connect_cost_matrix, piece_lr_count, piece_tb_count):
     connect_cost_matrix = np.square(connect_cost_matrix)
     lr_connect_cost_matrix, tb_connect_cost_matrix = connect_cost_matrix[:, :, 0], connect_cost_matrix[:, :, 1]
-    sorted_lr_indices = np.argsort(lr_connect_cost_matrix)[:, :2]
-    sorted_tb_indices = np.argsort(tb_connect_cost_matrix)[:, :2]
+    sorted_lr_indices = np.argsort(lr_connect_cost_matrix)[:, :]
+    sorted_tb_indices = np.argsort(tb_connect_cost_matrix)[:, :]
     calculated_count = 0
 
     class Combination:
@@ -171,9 +172,14 @@ def recover_image(src_image: Mat):
     print(f"min_status: {min_status}")
 
     recovered_image = cv2.vconcat([cv2.hconcat([image_pieces[piece_index][0] for piece_index in row]) for row in min_status])
-    cv2.imshow("recover_image", recovered_image)
-    cv2.waitKey(0)
+    # cv2.imshow("recover_image", recovered_image)
+    # cv2.waitKey(0)
+    return recovered_image
 
 
-image = cv2.imread("1a5c9ecb5c54461daf1d18722c69ab4a.jpg")
-recover_image(image)
+if __name__ == '__main__':
+    file_list = os.listdir("../data/vaptcha")
+    for file in file_list:
+        image = cv2.imread(f"../data/vaptcha/{file}")
+        image = recover_image(image)
+        cv2.imwrite(f"../data/vaptcha-recover/{file}", image)
