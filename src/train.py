@@ -99,7 +99,7 @@ for epoch in range(num_epochs):
 
             running_loss += loss.item()
 
-            t.set_postfix(loss=f'{loss.item():.6f}', avg_loss=f'{running_loss / t.n:.6f}')
+            t.set_postfix(loss=f'{loss.item():.6f}', avg_loss=f'{(running_loss / (t.n + 1)):.6f}')
             t.update()
     scheduler.step(running_loss / len(dataloader))
     early_stopping(running_loss)
