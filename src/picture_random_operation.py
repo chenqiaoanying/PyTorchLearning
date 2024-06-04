@@ -52,7 +52,7 @@ def dilate_image(image, points, kernel_size):
     return dilated, points
 
 
-def random_persepective_transform(image, points):
+def random_perspective_transform(image, points):
     height, width = image.shape[:2]
     min_x = round(points[:, 0].min())
     max_x = round(points[:, 0].max())
@@ -64,6 +64,7 @@ def random_persepective_transform(image, points):
     new_right_top = (random.randint(max_x, width), random.randint(0, min_y))
     new_right_bottom = (random.randint(max_x, width), random.randint(max_y, height))
     wrapper_points = np.array([new_left_top, new_left_bottom, new_right_bottom, new_right_top], dtype=np.float32)
+    wrapper_points = wrapper_points if random.randint(0, 1) == 0 else wrapper_points[::-1]
     random_order = random.randint(0, 3)
     wrapper_points = np.concatenate((wrapper_points[random_order:], wrapper_points[:random_order]))
     target_points = np.array([[0, 0], [0, height], [width, height], [width, 0]], dtype=np.float32)
@@ -81,7 +82,7 @@ if __name__ == '__main__':
     image_info = next(image_info for image_info in image_info_list if "f0847fd8-01700a69823c494abb82d990a442fe3a" in image_info.image_path)
     image = image_info.image
     points = image_info.resampled_real_points
-    new_image, new_points = random_persepective_transform(image, points)
+    new_image, new_points = random_perspective_transform(image, points)
 
     cv2.imshow("image", image)
     for x, y in new_points:

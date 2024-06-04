@@ -40,17 +40,17 @@ def curve_loss(predicted, target):
     return loss.float()
 
 
-dataset = CurveDataset(number_key_points=20)
+dataset = CurveDataset(number_key_points=10)
 dataloader = DataLoader(dataset, batch_size=16, shuffle=True, )
 
 # Initialize model, optimizer
-model = KeyPointModel(number_key_points=20)
+model = KeyPointModel(number_key_points=10)
 model = model.to(device)
 optimizer = optim.Adam(model.parameters(), lr=0.001)
 loss_function = curve_loss
 
 # Training loop
-num_epochs = 500
+num_epochs = 1000
 for epoch in range(num_epochs):
     model.train()
     running_loss = 0.0
@@ -65,24 +65,24 @@ for epoch in range(num_epochs):
         optimizer.step()
 
         running_loss += loss.item()
-
+    if num_epochs % 10 == 0:
+        torch.save(model.state_dict(), 'model_weights.pth')
     print(f'Epoch [{epoch + 1}/{num_epochs}], Loss: {running_loss / len(dataloader):.4f}')
+
 
 model.eval()
 
 
-# test test.png
-# image = cv2.imread("../data/vaptcha-recover/images/1b5c9d60-348fa791ac9f412c978630bd040e6c7f.jpg")
-def evaluate_image(image):
+def evaluate_image(path, output_path):
+    image = cv2.imread(path)
     data = image.transpose(2, 0, 1)
     data = torch.from_numpy(data).float().unsqueeze(0).to(device)
     output = model(data)
     output = output.view(-1, 2).detach().cpu().numpy()
     # cv2.drawKeypoints(image, [cv2.KeyPoint(x / 100 * image.shape[1], y / 100 * image.shape[0], 1) for x, y in output], image, color=(0, 255, 0))
     cv2.drawKeypoints(image, [cv2.KeyPoint(x, y, 1) for x, y in output], image, color=(0, 255, 0))
-    cv2.imshow("image", image)
-    cv2.waitKey(0)
+    cv2.imwrite(output_path, image)
 
 
-evaluate_image(cv2.imread("../data/vaptcha-recover/images/1b5c9d60-348fa791ac9f412c978630bd040e6c7f.jpg"))
-evaluate_image(cv2.imread("test.png"))
+evaluate_image("../data/vaptcha-recover/images/1b5c9d60-348fa791ac9f412c978630bd040e6c7f.jpg", "1.png")
+evaluate_image("test.png", "2.png")
