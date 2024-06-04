@@ -79,15 +79,12 @@ if __name__ == '__main__':
     from src.dataset import get_image_info
 
     image_info_list = get_image_info(20)
-    image_info = next(image_info for image_info in image_info_list if "f0847fd8-01700a69823c494abb82d990a442fe3a" in image_info.image_path)
+    image_info = image_info_list[random.randint(0, len(image_info_list) - 1)]
     image = image_info.image
     points = image_info.resampled_real_points
     new_image, new_points = random_perspective_transform(image, points)
 
-    cv2.imshow("image", image)
+    # cv2.imshow("image", image)
     for x, y in new_points:
         cv2.circle(new_image, (int(x), int(y)), 3, (0, 255, 0), -1)
-    cv2.imshow("warped_image", new_image)
-
-    cv2.waitKey(0)
-    cv2.destroyAllWindows()
+    cv2.imwrite("random.png", new_image)

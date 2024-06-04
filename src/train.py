@@ -1,3 +1,5 @@
+import os.path
+
 import cv2
 import torch
 import torch.nn as nn
@@ -46,11 +48,18 @@ dataloader = DataLoader(dataset, batch_size=16, shuffle=True, )
 # Initialize model, optimizer
 model = KeyPointModel(number_key_points=10)
 model = model.to(device)
+if os.path.exists('model_weights.pth'):
+    try:
+        model.load_state_dict(torch.load('model_weights.pth'))
+    except:
+        print("fail to load weight")
+model.eval()
+
 optimizer = optim.Adam(model.parameters(), lr=0.001)
 loss_function = curve_loss
 
 # Training loop
-num_epochs = 1000
+num_epochs = 1
 for epoch in range(num_epochs):
     model.train()
     running_loss = 0.0
@@ -71,8 +80,6 @@ for epoch in range(num_epochs):
 
 
 model.eval()
-
-
 def evaluate_image(path, output_path):
     image = cv2.imread(path)
     data = image.transpose(2, 0, 1)
