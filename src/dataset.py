@@ -1,14 +1,12 @@
 import dataclasses
 import json
-import re
+import os
 
 import cv2
 import numpy as np
 import torch
 from scipy.interpolate import splprep, splev
 from torch.utils.data import Dataset
-
-from src.picture_random_operation import random_persepective_transform
 
 
 def resample_curve(points, num_points):
@@ -20,10 +18,11 @@ def resample_curve(points, num_points):
 
 def get_image_info(number_key_points):
     project_info: list[dict] = json.load(open("../data/vaptcha-recover/project-2-at-2024-06-03-17-52-37c15ff6.json"))
-    return [ImageInfo(image_path=f"../data/vaptcha-recover/images/{re.search(r'[^/]+\.jpg', image_info['data']['img']).group()}",
+    image_filename_list = set(os.listdir("../data/vaptcha-recover/images"))
+    return [ImageInfo(image_path=f"../data/vaptcha-recover/images/{image_info['file_upload']}",
                       normalized_points=np.array([[result['value']['x'], result['value']['y']] for result in image_info["annotations"][0]["result"]]),
                       number_key_points=number_key_points)
-            for image_info in project_info if image_info["cancelled_annotations"] == 0]
+            for image_info in project_info if image_info["cancelled_annotations"] == 0 and image_info['file_upload'] in image_filename_list]
 
 
 @dataclasses.dataclass
@@ -68,5 +67,5 @@ class CurveDataset(Dataset):
         image_info = self.project_info[idx]
         image = image_info.image
         points = image_info.resampled_real_points
-        image, points = random_persepective_transform(image, points)
+        # image, points = random_persepective_transform(image, points)
         return torch.from_numpy(image.transpose(2, 0, 1)).float(), torch.from_numpy(points).float()
