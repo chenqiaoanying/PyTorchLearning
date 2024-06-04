@@ -41,6 +41,7 @@ def curve_loss(predicted, target):
 
     return loss.float()
 
+
 class EarlyStopping:
     def __init__(self, patience=5, min_delta=0):
         self.patience = patience
@@ -62,7 +63,7 @@ class EarlyStopping:
 
 
 dataset = CurveDataset(number_key_points=10)
-dataloader = DataLoader(dataset, batch_size=16, shuffle=True, )
+dataloader = DataLoader(dataset, batch_size=64, shuffle=True)
 early_stopping = EarlyStopping(patience=5)
 
 # Initialize model, optimizer
@@ -85,7 +86,7 @@ num_epochs = 1000
 for epoch in range(num_epochs):
     model.train()
     running_loss = 0.0
-    for images, keypoints in dataloader:
+    for batch_idx, (images, keypoints) in enumerate(dataloader):
         images = images.to(device)
         keypoints = keypoints.to(device)
 
@@ -96,13 +97,16 @@ for epoch in range(num_epochs):
         optimizer.step()
 
         running_loss += loss.item()
+
+        print(f'Train Epoch: {epoch} [{(batch_idx + 1) * len(images):>5d}/{len(dataloader.dataset)} '
+              f'({100. * (batch_idx + 1) / len(dataloader):2.0f}%)]\tLoss: {loss.item():.6f}')
     scheduler.step(running_loss / len(dataloader))
     print(f'Epoch [{epoch + 1}/{num_epochs}], Loss: {running_loss / len(dataloader):.4f}')
     early_stopping(running_loss)
     if early_stopping.early_stop:
         print("Early stopping")
         break
-    if num_epochs % 10 == 0:
+    if num_epochs % 1 == 0:
         torch.save(model.state_dict(), 'model_weights.pth')
 
 model.eval()

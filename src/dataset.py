@@ -8,6 +8,8 @@ import torch
 from scipy.interpolate import splprep, splev
 from torch.utils.data import Dataset
 
+from src.picture_random_operation import random_perspective_transform
+
 
 def resample_curve(points, num_points):
     tck, u = splprep(points.T, s=0, per=0)
@@ -58,14 +60,14 @@ class ImageInfo:
 
 class CurveDataset(Dataset):
     def __init__(self, number_key_points=10):
-        self.project_info = get_image_info(number_key_points)
+        image_list = get_image_info(number_key_points)
+        self.image_list = [(image_info.image, image_info.resampled_real_points) for image_info in image_list]
+        for _ in range(31):
+            self.image_list.extend([random_perspective_transform(image_info.image, image_info.resampled_real_points) for image_info in image_list])
 
     def __len__(self):
-        return len(self.project_info)
+        return len(self.image_list)
 
     def __getitem__(self, idx):
-        image_info = self.project_info[idx]
-        image = image_info.image
-        points = image_info.resampled_real_points
-        # image, points = random_persepective_transform(image, points)
+        image, points = self.image_list[idx]
         return torch.from_numpy(image.transpose(2, 0, 1)).float(), torch.from_numpy(points).float()
