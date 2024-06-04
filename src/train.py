@@ -41,9 +41,29 @@ def curve_loss(predicted, target):
 
     return loss.float()
 
+class EarlyStopping:
+    def __init__(self, patience=5, min_delta=0):
+        self.patience = patience
+        self.min_delta = min_delta
+        self.counter = 0
+        self.best_loss = None
+        self.early_stop = False
+
+    def __call__(self, val_loss):
+        if self.best_loss is None:
+            self.best_loss = val_loss
+        elif val_loss > self.best_loss - self.min_delta:
+            self.counter += 1
+            if self.counter >= self.patience:
+                self.early_stop = True
+        else:
+            self.best_loss = val_loss
+            self.counter = 0
+
 
 dataset = CurveDataset(number_key_points=10)
 dataloader = DataLoader(dataset, batch_size=16, shuffle=True, )
+early_stopping = EarlyStopping(patience=5)
 
 # Initialize model, optimizer
 model = KeyPointModel(number_key_points=10)
@@ -51,15 +71,17 @@ model = model.to(device)
 if os.path.exists('model_weights.pth'):
     try:
         model.load_state_dict(torch.load('model_weights.pth'))
+        print("load pretrain weight")
     except:
         print("fail to load weight")
 model.eval()
 
 optimizer = optim.Adam(model.parameters(), lr=0.001)
 loss_function = curve_loss
+scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=2, factor=0.5)
 
 # Training loop
-num_epochs = 1
+num_epochs = 1000
 for epoch in range(num_epochs):
     model.train()
     running_loss = 0.0
@@ -74,12 +96,18 @@ for epoch in range(num_epochs):
         optimizer.step()
 
         running_loss += loss.item()
+    scheduler.step(running_loss / len(dataloader))
+    print(f'Epoch [{epoch + 1}/{num_epochs}], Loss: {running_loss / len(dataloader):.4f}')
+    early_stopping(running_loss)
+    if early_stopping.early_stop:
+        print("Early stopping")
+        break
     if num_epochs % 10 == 0:
         torch.save(model.state_dict(), 'model_weights.pth')
-    print(f'Epoch [{epoch + 1}/{num_epochs}], Loss: {running_loss / len(dataloader):.4f}')
-
 
 model.eval()
+
+
 def evaluate_image(path, output_path):
     image = cv2.imread(path)
     data = image.transpose(2, 0, 1)
