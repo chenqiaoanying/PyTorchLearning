@@ -9,15 +9,16 @@ verify_ssl = true
 name = "pytorch"
 
 [packages]
-torch = {version = "*", index = "pytorch"}
-torchvision = {version = "*", index = "pytorch"}
-torchaudio = {version = "*", index = "pytorch"}
+torch = {version = "2.3.1+cu121", index = "pytorch"}
+torchvision = {version = "0.18.1+cu121", index = "pytorch"}
+torchaudio = {version = "2.3.1+cu121", index = "pytorch"}
 segmentation-models-pytorch = "*"
 six = "*"
 opencv-python = "*"
 sortedcontainers = "*"
 label-studio-sdk = "*"
 scipy = "*"
+tqdm = "*"
 
 [dev-packages]
 

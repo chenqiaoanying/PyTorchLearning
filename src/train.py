@@ -8,6 +8,7 @@ import torchvision.models as models
 from torch import optim
 from torch.utils.data import DataLoader
 from torchvision.models import ResNet152_Weights
+from tqdm import trange
 
 from src.dataset import CurveDataset
 
@@ -64,9 +65,7 @@ class EarlyStopping:
 
 dataset = CurveDataset(number_key_points=10)
 dataloader = DataLoader(dataset, batch_size=64, shuffle=True)
-early_stopping = EarlyStopping(patience=5)
 
-# Initialize model, optimizer
 model = KeyPointModel(number_key_points=10)
 model = model.to(device)
 if os.path.exists('model_weights.pth'):
@@ -80,28 +79,29 @@ model.eval()
 optimizer = optim.Adam(model.parameters(), lr=0.001)
 loss_function = curve_loss
 scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=2, factor=0.5)
+early_stopping = EarlyStopping(patience=5)
 
 # Training loop
 num_epochs = 1000
 for epoch in range(num_epochs):
     model.train()
-    running_loss = 0.0
-    for batch_idx, (images, keypoints) in enumerate(dataloader):
-        images = images.to(device)
-        keypoints = keypoints.to(device)
+    with trange(len(dataloader), desc=f'Epoch {epoch + 1}/{num_epochs}') as t:
+        running_loss = 0.0
+        for images, key_points in dataloader:
+            images = images.to(device)
+            key_points = key_points.to(device)
 
-        optimizer.zero_grad()
-        outputs = model(images)
-        loss = loss_function(outputs, keypoints)
-        loss.backward()
-        optimizer.step()
+            optimizer.zero_grad()
+            outputs = model(images)
+            loss = loss_function(outputs, key_points)
+            loss.backward()
+            optimizer.step()
 
-        running_loss += loss.item()
+            running_loss += loss.item()
 
-        print(f'Train Epoch: {epoch} [{(batch_idx + 1) * len(images):>5d}/{len(dataloader.dataset)} '
-              f'({100. * (batch_idx + 1) / len(dataloader):2.0f}%)]\tLoss: {loss.item():.6f}')
+            t.set_postfix(loss=f'{loss.item():.6f}', avg_loss=f'{running_loss / t.n:.6f}')
+            t.update()
     scheduler.step(running_loss / len(dataloader))
-    print(f'Epoch [{epoch + 1}/{num_epochs}], Loss: {running_loss / len(dataloader):.4f}')
     early_stopping(running_loss)
     if early_stopping.early_stop:
         print("Early stopping")
