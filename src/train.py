@@ -3,7 +3,6 @@ import os.path
 import cv2
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 import torchvision.models as models
 from torch import optim
 from torch.utils.data import DataLoader
@@ -32,17 +31,6 @@ class KeyPointModel(nn.Module):
         return self.backbone(x)
 
 
-def curve_loss(predicted, target):
-    # Reshape to (num_keypoints, 2)
-    predicted = predicted.view(predicted.size(0), -1, 2)
-    target = target.view(target.size(0), -1, 2)
-
-    # Calculate MSE loss
-    loss = F.mse_loss(predicted, target)
-
-    return loss.float()
-
-
 class EarlyStopping:
     def __init__(self, patience=5, min_delta=0):
         self.patience = patience
@@ -63,31 +51,13 @@ class EarlyStopping:
             self.counter = 0
 
 
-dataset = CurveDataset(number_key_points=10)
-dataloader = DataLoader(dataset, batch_size=64, shuffle=True)
-
-model = KeyPointModel(number_key_points=10)
-model = model.to(device)
-if os.path.exists('model_weights.pth'):
-    try:
-        model.load_state_dict(torch.load('model_weights.pth'))
-        print("load pretrain weight")
-    except:
-        print("fail to load weight")
-model.eval()
-
-optimizer = optim.Adam(model.parameters(), lr=0.001)
-loss_function = curve_loss
-scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=2, factor=0.5)
-early_stopping = EarlyStopping(patience=5)
-
-# Training loop
-num_epochs = 1000
-for epoch in range(num_epochs):
+def train_loop(model, dataloader, loss_function, optimizer, desc):
     model.train()
-    with trange(len(dataloader), desc=f'Epoch {epoch + 1}/{num_epochs}') as t:
+    with trange(len(dataloader.dataset), desc=desc) as t:
         running_loss = 0.0
+        batch_count = 0
         for images, key_points in dataloader:
+            batch_count += 1
             images = images.to(device)
             key_points = key_points.to(device)
 
@@ -99,21 +69,14 @@ for epoch in range(num_epochs):
 
             running_loss += loss.item()
 
-            t.set_postfix(loss=f'{loss.item():.6f}', avg_loss=f'{(running_loss / (t.n + 1)):.6f}')
-            t.update()
-    scheduler.step(running_loss / len(dataloader))
-    early_stopping(running_loss)
-    if early_stopping.early_stop:
-        print("Early stopping")
-        break
-    if num_epochs % 1 == 0:
-        torch.save(model.state_dict(), 'model_weights.pth')
-
-model.eval()
+            t.set_postfix(loss=f'{loss.item():.6f}', avg_loss=f'{(running_loss / batch_count):.6f}')
+            t.update(len(images))
+    return running_loss / len(dataloader)
 
 
-def evaluate_image(path, output_path):
-    image = cv2.imread(path)
+def evaluate_image(input_path, output_path):
+    model.eval()
+    image = cv2.imread(input_path)
     data = image.transpose(2, 0, 1)
     data = torch.from_numpy(data).float().unsqueeze(0).to(device)
     output = model(data)
@@ -123,5 +86,34 @@ def evaluate_image(path, output_path):
     cv2.imwrite(output_path, image)
 
 
-evaluate_image("../data/vaptcha-recover/images/1b5c9d60-348fa791ac9f412c978630bd040e6c7f.jpg", "1.png")
-evaluate_image("test.png", "2.png")
+if __name__ == '__main__':
+    dataset = CurveDataset(number_key_points=10)
+    train_loader = DataLoader(dataset, batch_size=64, shuffle=True)
+
+    model = KeyPointModel(number_key_points=10)
+    model = model.to(device)
+    if os.path.exists('model_weights.pth'):
+        try:
+            model.load_state_dict(torch.load('model_weights.pth', map_location=torch.device(device)))
+            print("load pretrain weight")
+        except Exception as e:
+            print(f"fail to load weight: {e}")
+    model.eval()
+
+    optimizer = optim.Adam(model.parameters(), lr=0.001)
+    loss_function = nn.MSELoss()
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=2, factor=0.5)
+    early_stopping = EarlyStopping(patience=5)
+
+    num_epochs = 1000
+    for epoch in range(num_epochs):
+        loss = train_loop(model, train_loader, loss_function, optimizer, f'Epoch {epoch + 1}/{num_epochs}')
+        early_stopping(loss)
+        if early_stopping.early_stop:
+            print("Early stopping")
+            break
+        scheduler.step(loss)
+        torch.save(model.state_dict(), 'model_weights.pth')
+
+    evaluate_image("../data/vaptcha-recover/images/1b5c9d60-348fa791ac9f412c978630bd040e6c7f.jpg", "1.png")
+    evaluate_image("test.png", "2.png")
