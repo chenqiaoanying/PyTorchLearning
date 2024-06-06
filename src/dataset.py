@@ -8,7 +8,7 @@ import torch
 from scipy.interpolate import splprep, splev
 from torch.utils.data import Dataset
 
-from src.picture_random_operation import random_perspective_transform
+from src.picture_random_operation import random_perspective_transform, resize_image
 
 device = (
     "cuda"
@@ -69,14 +69,12 @@ class ImageInfo:
 class CurveDataset(Dataset):
     def __init__(self, number_key_points=10):
         image_info_list = get_image_info(number_key_points)
-        image_list = [(image_info.image, image_info.resampled_real_points) for image_info in image_info_list]
-        for _ in range(31):
-            image_list.extend([random_perspective_transform(image_info.image, image_info.resampled_real_points) for image_info in image_info_list])
-        self.tensor_list = [(torch.from_numpy(image.transpose(2, 0, 1)).float().to(device), torch.from_numpy(points).float().to(device)) for image, points in image_list]
-        del image_list
+        image_list = [resize_image(image_info.image, image_info.resampled_real_points, 416, 256) for image_info in image_info_list]
+        self.image_list = image_list + [random_perspective_transform(image, points) for image, points in image_list for _ in range(15)]
 
     def __len__(self):
-        return len(self.tensor_list)
+        return len(self.image_list)
 
     def __getitem__(self, idx):
-        return self.tensor_list[idx]
+        image, points = self.image_list[idx]
+        return torch.from_numpy(image.transpose(2, 0, 1)).float(), torch.from_numpy(points).float()

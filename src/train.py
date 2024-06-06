@@ -1,12 +1,12 @@
 import os.path
 
 import cv2
+import segmentation_models_pytorch as smp
 import torch
 import torch.nn as nn
-import torchvision.models as models
+import torch.nn.functional as F
 from torch import optim
 from torch.utils.data import DataLoader
-from torchvision.models import ResNet152_Weights
 from tqdm import trange
 
 from src.dataset import CurveDataset
@@ -24,11 +24,31 @@ print(f"Using {device} device")
 class KeyPointModel(nn.Module):
     def __init__(self, number_key_points=10):  # Assuming 10 key points (x, y) pairs
         super(KeyPointModel, self).__init__()
-        self.backbone = models.resnet152(weights=[ResNet152_Weights.DEFAULT])
-        self.backbone.fc = nn.Linear(self.backbone.fc.in_features, number_key_points * 2)  # 10 key points, each with x and y
+        aux_params = dict(
+            pooling='avg',  # one of 'avg', 'max'
+            dropout=0.5,  # dropout ratio, default is None
+            activation='sigmoid',  # activation function, default is None
+            classes=4,  # define number of output labels
+        )
+        self.features = smp.Unet(
+            encoder_name="resnet152",  # choose encoder, e.g. mobilenet_v2 or efficientnet-b7
+            encoder_weights="imagenet",  # use `imagenet` pre-trained weights for encoder initialization
+            in_channels=3,  # model input channels (1 for gray-scale images, 3 for RGB, etc.)
+            classes=1,  # model output channels (number of classes in your dataset)
+            aux_params=aux_params
+        )
+        self.classifier = nn.Sequential(
+            nn.Linear(256 * 416, 512),
+            nn.ReLU(),
+            nn.Dropout(0.35),
+            nn.Linear(512, number_key_points * 2)
+        )
 
     def forward(self, x):
-        return self.backbone(x)
+        mask, label = self.features(x)
+        x = mask.view(-1, 256 * 416)
+        x = self.classifier(x)
+        return x
 
 
 class EarlyStopping:
@@ -49,6 +69,17 @@ class EarlyStopping:
         else:
             self.best_loss = val_loss
             self.counter = 0
+
+
+def curve_loss(predicted, target):
+    # Reshape to (num_keypoints, 2)
+    predicted = predicted.view(predicted.size(0), -1, 2)
+    target = target.view(target.size(0), -1, 2)
+
+    # Calculate MSE loss
+    loss = F.mse_loss(predicted, target)
+
+    return loss.float()
 
 
 def train_loop(model, dataloader, loss_function, optimizer, desc):
@@ -77,6 +108,7 @@ def train_loop(model, dataloader, loss_function, optimizer, desc):
 def evaluate_image(input_path, output_path):
     model.eval()
     image = cv2.imread(input_path)
+    image = cv2.resize(image, (416, 256))
     data = image.transpose(2, 0, 1)
     data = torch.from_numpy(data).float().unsqueeze(0).to(device)
     output = model(data)
@@ -88,7 +120,7 @@ def evaluate_image(input_path, output_path):
 
 if __name__ == '__main__':
     dataset = CurveDataset(number_key_points=10)
-    train_loader = DataLoader(dataset, batch_size=64, shuffle=True)
+    train_loader = DataLoader(dataset, batch_size=1, shuffle=True)
 
     model = KeyPointModel(number_key_points=10)
     model = model.to(device)
@@ -101,7 +133,7 @@ if __name__ == '__main__':
     model.eval()
 
     optimizer = optim.Adam(model.parameters(), lr=0.001)
-    loss_function = nn.MSELoss()
+    loss_function = curve_loss
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', patience=2, factor=0.5)
     early_stopping = EarlyStopping(patience=5)
 

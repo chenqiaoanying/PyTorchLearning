@@ -75,6 +75,12 @@ def random_perspective_transform(image, points):
     return warped_image, transformed_points
 
 
+def resize_image(image, points, width, height):
+    resized = cv2.resize(image, (width, height))
+    new_points = points * np.array([width / image.shape[1], height / image.shape[0]])
+    return resized, new_points
+
+
 if __name__ == '__main__':
     from src.dataset import get_image_info
 
